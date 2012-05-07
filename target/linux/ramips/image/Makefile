@@ -270,6 +270,10 @@ define BuildFirmware/WLITX4AG300N
 	$(call BuildFirmware/Buffalo2,$(1),wli-tx4-ag300n,WLI-TX4-AG300N,$(call mkmtd/phys,$(mtdlayout_wlitx4ag300n)),917504,2883584)
 endef
 
+define BuildFirmware/CARAMBOLA
+	$(call BuildFirmware/Generic,$(1),$(2),board=$(3),1179648,6881280)
+endef
+
 #
 # Templates
 #
@@ -438,6 +442,10 @@ define Image/Build/Profile/XDXRN502J
 	$(call Image/Build/Template/$(fs_squash)/$(1),GENERIC_4M,xdxrn502j,XDXRN502J,ttyS1,57600,phys)
 endef
 
+define Image/Build/Profile/CARAMBOLA
+	$(call Image/Build/Template/$(fs_squash)/$(1),CARAMBOLA,carambola,CARAMBOLA)
+endef
+
 ifeq ($(CONFIG_RALINK_RT305X),y)
 define Image/Build/Profile/Default
 	$(call Image/Build/Profile/ALL0256N,$(1))
@@ -469,6 +477,7 @@ define Image/Build/Profile/Default
 	$(call Image/Build/Profile/WR5123GN,$(1))
 	$(call Image/Build/Profile/WR6202,$(1))
 	$(call Image/Build/Profile/XDXRN502J,$(1))
+	$(call Image/Build/Profile/CARAMBOLA,$(1))
 endef
 endif
 

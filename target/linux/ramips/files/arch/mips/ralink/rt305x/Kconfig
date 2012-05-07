@@ -149,6 +149,9 @@ config RT305X_MACH_XDX_RN502J
 	select RALINK_DEV_GPIO_BUTTONS
 	select RALINK_DEV_GPIO_LEDS
 
+config RT305X_MACH_CARAMBOLA
+	bool "8devices Carambola board"
+
 endmenu
 
 endif
