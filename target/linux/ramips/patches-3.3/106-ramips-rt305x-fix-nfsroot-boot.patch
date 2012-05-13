@@ -1,0 +1,111 @@
+From 6473b9f30baf730d0d2589aa8e1784cace393bc2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20=C5=A0tetiar?= <ynezz@true.cz>
+Date: Sun, 13 May 2012 22:51:19 +0200
+Subject: [PATCH] ramips/rt305x: fix nfsroot boot
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Tested on Carambola with fixed IP and DHCP (ip=XX, ip=dhcp) boot options.
+
+Signed-off-by: Petr Štetiar <ynezz@true.cz>
+---
+ include/linux/if_vlan.h |    2 ++
+ net/8021q/vlan.c        |    4 +++-
+ net/ipv4/ipconfig.c     |   24 ++++++++++++++++++++++++
+ 3 files changed, 29 insertions(+), 1 deletion(-)
+
+diff --git a/include/linux/if_vlan.h b/include/linux/if_vlan.h
+index 13aff1e..5368017 100644
+--- a/include/linux/if_vlan.h
++++ b/include/linux/if_vlan.h
+@@ -101,6 +101,8 @@ extern int vlan_vids_add_by_dev(struct net_device *dev,
+ 				const struct net_device *by_dev);
+ extern void vlan_vids_del_by_dev(struct net_device *dev,
+ 				 const struct net_device *by_dev);
++
++extern int register_vlan_device(struct net_device *real_dev, u16 vlan_id);
+ #else
+ static inline struct net_device *
+ __vlan_find_dev_deep(struct net_device *real_dev, u16 vlan_id)
+diff --git a/net/8021q/vlan.c b/net/8021q/vlan.c
+index efea35b..348e173 100644
+--- a/net/8021q/vlan.c
++++ b/net/8021q/vlan.c
+@@ -35,6 +35,7 @@
+ #include <net/net_namespace.h>
+ #include <net/netns/generic.h>
+ #include <asm/uaccess.h>
++#include <linux/export.h>
+ 
+ #include <linux/if_vlan.h>
+ #include "vlan.h"
+@@ -191,7 +192,7 @@ out_vid_del:
+ /*  Attach a VLAN device to a mac address (ie Ethernet Card).
+  *  Returns 0 if the device was created or a negative error code otherwise.
+  */
+-static int register_vlan_device(struct net_device *real_dev, u16 vlan_id)
++int register_vlan_device(struct net_device *real_dev, u16 vlan_id)
+ {
+ 	struct net_device *new_dev;
+ 	struct net *net = dev_net(real_dev);
+@@ -259,6 +260,7 @@ out_free_newdev:
+ 	free_netdev(new_dev);
+ 	return err;
+ }
++EXPORT_SYMBOL(register_vlan_device);
+ 
+ static void vlan_sync_address(struct net_device *dev,
+ 			      struct net_device *vlandev)
+diff --git a/net/ipv4/ipconfig.c b/net/ipv4/ipconfig.c
+index 6e412a6..11efe12 100644
+--- a/net/ipv4/ipconfig.c
++++ b/net/ipv4/ipconfig.c
+@@ -55,6 +55,7 @@
+ #include <linux/nfs_fs.h>
+ #include <linux/slab.h>
+ #include <linux/export.h>
++#include <linux/if_vlan.h>
+ #include <net/net_namespace.h>
+ #include <net/arp.h>
+ #include <net/ip.h>
+@@ -199,6 +200,24 @@ static bool __init ic_is_init_dev(struct net_device *dev)
+ 	     strncmp(dev->name, "dummy", 5));
+ }
+ 
++static int __init create_vlan(struct net_device *real_dev)
++{
++	int err;
++	static int done = false;
++
++	if (done)
++		return 1;
++
++	err = register_vlan_device(real_dev, 1);
++	if (err < 0)
++	       printk(KERN_ERR "IP-Config: Failed adding vlan!\n");
++
++	printk(KERN_INFO "IP-Config: Ok, vlan created\n");
++	done = true;
++
++	return 0;
++}
++
+ static int __init ic_open_devs(void)
+ {
+ 	struct ic_device *d, **last;
+@@ -250,6 +269,11 @@ static int __init ic_open_devs(void)
+ 			ic_proto_have_if |= able;
+ 			DBG(("IP-Config: %s UP (able=%d, xid=%08x)\n",
+ 				dev->name, able, d->xid));
++
++#if defined(CONFIG_RALINK_RT305X)
++			if (create_vlan(d->dev))
++				ic_first_dev = d;
++#endif
+ 		}
+ 	}
+ 
+-- 
+1.7.9.5
+
