@@ -1,0 +1,10 @@
+#!/bin/sh
+
+. /etc/functions.sh
+. /lib/functions/uci-defaults.sh
+
+grep -q "nfsroot" /proc/cmdline && {
+	chmod -x /etc/init.d/firewall
+	touch /etc/config/network
+	ucidef_set_interface_loopback
+}
