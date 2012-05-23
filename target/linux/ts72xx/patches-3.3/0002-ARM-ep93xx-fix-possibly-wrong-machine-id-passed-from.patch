@@ -1,0 +1,51 @@
+From ceb51c9a2794bb13352d9c71e073ee401f2d5230 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20=C5=A0tetiar?= <ynezz@true.cz>
+Date: Sun, 29 May 2011 17:53:10 +0200
+Subject: [PATCH 2/5] ARM: ep93xx: fix possibly wrong machine id passed from
+ bootloader
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In the early days Technologic Systems failed horribly and shipped some boards
+(ts-72xx and ts-7800 are well known examples) with broken bootloaders, so
+they've passed wrong machine id to the kernel.
+
+We're trying to fix it with this patch in a way, that if we detect the wrong
+machine id 0x163 we force it to correct machine id 0x2a1 (ts72xx).  Maybe,
+that there are some other wrong numbers in the wild, so the code might need
+some more tweaking.
+
+[LOCAL, not for mainline!]
+
+Signed-off-by: Petr Štetiar <ynezz@true.cz>
+---
+ arch/arm/kernel/setup.c |   12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/arch/arm/kernel/setup.c b/arch/arm/kernel/setup.c
+index a255c39..f7e8ea6 100644
+--- a/arch/arm/kernel/setup.c
++++ b/arch/arm/kernel/setup.c
+@@ -848,6 +848,18 @@ static struct machine_desc * __init setup_machine_tags(unsigned int nr)
+ 
+ 	init_tags.mem.start = PHYS_OFFSET;
+ 
++/* Machine id fixup */
++#ifdef CONFIG_MACH_TS72XX
++	switch (nr) {
++		/* some older redboot on ts-72{50,60} probably */
++		case 0x163:
++			printk("Wrong machine ID 0x163 passed from the bootloader, "
++			       "fixing it to 0x2a1\n");
++			nr = 0x2a1;
++		break;
++	}
++#endif
++
+ 	/*
+ 	 * locate machine in the list of supported machines.
+ 	 */
+-- 
+1.7.9.5
+

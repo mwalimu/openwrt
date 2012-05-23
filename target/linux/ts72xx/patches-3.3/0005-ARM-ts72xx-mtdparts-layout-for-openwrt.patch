@@ -1,0 +1,75 @@
+From 215cc5824ac388f31d49ac04a3cc97602e040fd1 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20=C5=A0tetiar?= <ynezz@true.cz>
+Date: Sat, 11 Jun 2011 13:19:47 +0200
+Subject: [PATCH 5/5] ARM: ts72xx: mtdparts layout for openwrt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+0x000000000000-0x000000004000 : "bootrom"
+0x000000004000-0x000001d04000 : "rootfs"
+0x000001d04000-0x000001d44000 : "redboot"
+0x000001d44000-0x000001ffc000 : "kernel"
+0x000001ffc000-0x000001fff000 : "redboot_fis"
+0x000001fff000-0x000002000000 : "redboot_config"
+
+Signed-off-by: Petr Štetiar <ynezz@true.cz>
+---
+ arch/arm/mach-ep93xx/ts72xx.c |   33 +++++++++++++++++++++------------
+ 1 file changed, 21 insertions(+), 12 deletions(-)
+
+diff --git a/arch/arm/mach-ep93xx/ts72xx.c b/arch/arm/mach-ep93xx/ts72xx.c
+index 105e860..8e5f77e 100644
+--- a/arch/arm/mach-ep93xx/ts72xx.c
++++ b/arch/arm/mach-ep93xx/ts72xx.c
+@@ -111,26 +111,35 @@ static int ts72xx_nand_device_ready(struct mtd_info *mtd)
+ 
+ static const char *ts72xx_nand_part_probes[] = { "cmdlinepart", NULL };
+ 
+-#define TS72XX_BOOTROM_PART_SIZE	(SZ_16K)
+-#define TS72XX_REDBOOT_PART_SIZE	(SZ_2M + SZ_1M)
+-
+ static struct mtd_partition ts72xx_nand_parts[] = {
+ 	{
+-		.name		= "TS-BOOTROM",
++		.name		= "bootrom",
+ 		.offset		= 0,
+-		.size		= TS72XX_BOOTROM_PART_SIZE,
++		.size		= 0x4000,
+ 		.mask_flags	= MTD_WRITEABLE,	/* force read-only */
+ 	}, {
+-		.name		= "Linux",
+-		.offset		= MTDPART_OFS_RETAIN,
+-		.size		= TS72XX_REDBOOT_PART_SIZE,
+-				/* leave so much for last partition */
++		.name		= "rootfs",
++		.offset		= MTDPART_OFS_APPEND,
++		.size		= 0x1d00000,
+ 	}, {
+-		.name		= "RedBoot",
++		.name		= "redboot",
+ 		.offset		= MTDPART_OFS_APPEND,
+-		.size		= MTDPART_SIZ_FULL,
++		.size		= 0x40000,
+ 		.mask_flags	= MTD_WRITEABLE,	/* force read-only */
+-	},
++	}, {
++		.name		= "kernel",
++		.offset		= MTDPART_OFS_APPEND,
++		.size		= 0x2b8000,
++	}, {
++		.name		= "redboot_fis",
++		.offset		= MTDPART_OFS_APPEND,
++		.size		= 0x3000,
++		.mask_flags	= MTD_WRITEABLE,	/* force read-only */
++	}, {
++		.name		= "redboot_config",
++		.offset		= MTDPART_OFS_APPEND,
++		.size		= 0x1000,
++	}
+ };
+ 
+ static struct platform_nand_data ts72xx_nand_data = {
+-- 
+1.7.9.5
+

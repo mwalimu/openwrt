@@ -1,0 +1,35 @@
+From 1606420c2be9df9b373167269b1e33899f7af71f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20=C5=A0tetiar?= <ynezz@true.cz>
+Date: Sun, 29 May 2011 17:19:14 +0200
+Subject: [PATCH 1/5] ARM: ep93xx: force nF bit on
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+ARM clocking mode is determined by the iA(31) and nF(30) bits, which are
+usually set correctly by the bootloader or bootrom. If it is not set, then the
+CPU core will run from HCLK instead of FCLK, and performance will suffer. It's
+quite common case on some of the ts72xx boards.
+
+[LOCAL, not for mainline!]
+
+Signed-off-by: Petr Štetiar <ynezz@true.cz>
+---
+ arch/arm/mm/proc-arm920.S |    1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm/mm/proc-arm920.S b/arch/arm/mm/proc-arm920.S
+index cb941ae..53294bf 100644
+--- a/arch/arm/mm/proc-arm920.S
++++ b/arch/arm/mm/proc-arm920.S
+@@ -421,6 +421,7 @@ __arm920_setup:
+ 	mrc	p15, 0, r0, c1, c0		@ get control register v4
+ 	bic	r0, r0, r5
+ 	orr	r0, r0, r6
++	orr	r0, r0, #0x40000000		@ set nF bit
+ 	mov	pc, lr
+ 	.size	__arm920_setup, . - __arm920_setup
+ 
+-- 
+1.7.9.5
+

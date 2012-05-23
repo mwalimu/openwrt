@@ -1,0 +1,27 @@
+#!/bin/sh
+
+COMMIT_SYSTEM=0
+
+set_led_trigger() {
+	local cfg="led_$1"
+	local name=$2
+	local sysfs=$3
+	local trigger=$4
+
+	uci -q get system.$cfg && return 0
+
+	uci batch <<EOF
+set system.$cfg='led'
+set system.$cfg.name='$name'
+set system.$cfg.sysfs='$sysfs'
+set system.$cfg.trigger='$trigger'
+EOF
+
+	COMMIT_SYSTEM=1
+}
+
+set_led_trigger "green" "green" "platform:grled" "heartbeat"
+
+[ "$COMMIT_SYSTEM" == "1" ] && uci commit system
+
+exit 0

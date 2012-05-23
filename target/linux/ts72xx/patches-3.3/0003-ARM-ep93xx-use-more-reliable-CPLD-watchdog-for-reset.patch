@@ -1,0 +1,63 @@
+From 966ea2e119ea85674e5afc2e6c7ea2560735d15b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20=C5=A0tetiar?= <ynezz@true.cz>
+Date: Sun, 20 May 2012 11:57:37 +0200
+Subject: [PATCH 3/5] ARM: ep93xx: use more reliable CPLD watchdog for reset
+ on ts72xx
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On all ep93xx based boards from Technologic Systems, there's CPLD watchdog
+available, so use this one to reset the board instead of the soft reset in
+CPU.  I've seen some weird lockups with the soft reset on ep93xx in the past,
+while the reset via CPLD watchdog seems to be rock solid (tm) and works fine
+so far.
+
+Signed-off-by: Petr Štetiar <ynezz@true.cz>
+---
+ arch/arm/mach-ep93xx/ts72xx.c |   24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-ep93xx/ts72xx.c b/arch/arm/mach-ep93xx/ts72xx.c
+index 79f8ecf..8bd58c6 100644
+--- a/arch/arm/mach-ep93xx/ts72xx.c
++++ b/arch/arm/mach-ep93xx/ts72xx.c
+@@ -243,6 +243,28 @@ static void __init ts72xx_init_machine(void)
+ 	ep93xx_register_eth(&ts72xx_eth_data, 1);
+ }
+ 
++/* Use more reliable CPLD watchdog to perform the reset */
++static void ts72xx_restart(char cmd, const char *mode)
++{
++	void __iomem *ctrl;
++	void __iomem *feed;
++
++	ctrl = ioremap(ts72xx_wdt_resources[0].start,
++			  resource_size(&ts72xx_wdt_resources[0]));
++	feed = ioremap(ts72xx_wdt_resources[1].start,
++		       resource_size(&ts72xx_wdt_resources[1]));
++
++	if (ctrl && feed) {
++		__raw_writeb(0x5, feed);
++		__raw_writeb(0x1, ctrl);
++
++		while (1)
++			;
++	}
++
++	ep93xx_restart(cmd, mode);
++}
++
+ MACHINE_START(TS72XX, "Technologic Systems TS-72xx SBC")
+ 	/* Maintainer: Lennert Buytenhek <buytenh@wantstofly.org> */
+ 	.atag_offset	= 0x100,
+@@ -251,5 +273,5 @@ MACHINE_START(TS72XX, "Technologic Systems TS-72xx SBC")
+ 	.handle_irq	= vic_handle_irq,
+ 	.timer		= &ep93xx_timer,
+ 	.init_machine	= ts72xx_init_machine,
+-	.restart	= ep93xx_restart,
++	.restart	= ts72xx_restart,
+ MACHINE_END
+-- 
+1.7.9.5
+
