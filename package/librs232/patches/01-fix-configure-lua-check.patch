@@ -1,0 +1,13 @@
+Index: librs232-1.0.3/configure.in
+===================================================================
+--- librs232-1.0.3.orig/configure.in	2012-05-27 18:07:04.000000000 +0200
++++ librs232-1.0.3/configure.in	2012-05-27 18:42:31.536437229 +0200
+@@ -138,7 +138,7 @@
+     fi
+ 
+     AC_MSG_CHECKING(for Lua compiling and linking)
+-    LUA_TEST=`LT=luatest.c ; echo "#include <lua.h>" > $LT;  echo "#include <lualib.h>" >> $LT; echo "int main() { luaopen_base((lua_State *)lua_open()); return 0; }" >> $LT ; $CC -Wall $LT -o $LT.out -lm $LUA_CFLAGS $LUA_LFLAGS $CFLAGS $LDFLAGS 1>/dev/null 2>&1 ; echo $?; rm -f $LT $LT.out 1>/dev/null 2>&1`
++    LUA_TEST=`LT=luatest.c ; echo "#include <lua.h>" > $LT;  echo "#include <lualib.h>" >> $LT; echo "int main() { luaopen_base((lua_State *)lua_open()); return 0; }" >> $LT ; $CC -Wall $LT -o $LT.out -lm -ldl $LUA_CFLAGS $LUA_LFLAGS $CFLAGS $LDFLAGS 1>/dev/null 2>&1 ; echo $?; rm -f $LT $LT.out 1>/dev/null 2>&1`
+     if test "x$LUA_TEST" != "x0" ; then
+         AC_MSG_RESULT(no)
+         AC_MSG_WARN([

@@ -1,0 +1,402 @@
+From ffa6d43e469d162aae0076725ce01aac44e6fa91 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20=C5=A0tetiar?= <ynezz@true.cz>
+Date: Tue, 29 May 2012 11:38:47 +0200
+Subject: [PATCH] Introduce rs232_last_error() function for better error
+ information gathering
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Petr Štetiar <ynezz@true.cz>
+---
+ bindings/lua/luars232.c  |    6 +-
+ include/librs232/rs232.h |    2 +
+ src/rs232.c              |    7 +++
+ src/rs232_posix.c        |  145 ++++++++++++++++++----------------------------
+ 4 files changed, 69 insertions(+), 91 deletions(-)
+
+diff --git a/bindings/lua/luars232.c b/bindings/lua/luars232.c
+index 3088907..c8667b2 100644
+--- a/bindings/lua/luars232.c
++++ b/bindings/lua/luars232.c
+@@ -117,11 +117,11 @@ static int lua_port_open(lua_State *L)
+ 	rs232_set_device(p, (char *) luaL_checkstring(L, 1));
+ 	ret = rs232_open(p);
+ 	if (ret > RS232_ERR_NOERROR) {
+-		free(p->pt);
+-		free(p);
+ 		lua_pushinteger(L, ret);
+ 		lua_pushnil(L);
+-		return 2;
++		lua_pushstring(L, rs232_last_error(p));
++		rs232_end(p);
++		return 3;
+ 	}
+ 
+ 	lua_pushinteger(L, RS232_ERR_NOERROR);
+diff --git a/include/librs232/rs232.h b/include/librs232/rs232.h
+index e90a832..ce69842 100644
+--- a/include/librs232/rs232.h
++++ b/include/librs232/rs232.h
+@@ -136,6 +136,7 @@ enum rs232_rts_e {
+ 
+ struct rs232_port_t {
+ 	char dev[RS232_STRLEN_DEVICE+1];
++	char *last_error;
+ 	void *pt; /* platform specific stuff */
+ 	enum rs232_baud_e baud;
+ 	enum rs232_data_e data;
+@@ -212,5 +213,6 @@ RS232_LIB const char * rs232_strflow(unsigned int flow);
+ RS232_LIB const char * rs232_strdtr(unsigned int dtr);
+ RS232_LIB const char * rs232_strrts(unsigned int rts);
+ RS232_LIB unsigned int rs232_fd(struct rs232_port_t *p);
++RS232_LIB const char * rs232_last_error(struct rs232_port_t *p);
+ 
+ #endif /* __LIBRS232_H__ */
+diff --git a/src/rs232.c b/src/rs232.c
+index 7541ab4..1212c33 100644
+--- a/src/rs232.c
++++ b/src/rs232.c
+@@ -312,3 +312,10 @@ rs232_get_rts(struct rs232_port_t *p)
+ 	DBG("p=%p rts: %d\n", (void *)p, p->rts);
+ 	return p->rts;
+ }
++
++RS232_LIB const char *
++rs232_last_error(struct rs232_port_t *p)
++{
++	DBG("p=%p rts: %d\n", (void *)p, p->rts);
++	return p->last_error;
++}
+diff --git a/src/rs232_posix.c b/src/rs232_posix.c
+index 3c92525..e947fbd 100644
+--- a/src/rs232_posix.c
++++ b/src/rs232_posix.c
+@@ -39,6 +39,24 @@
+ 
+ #include "librs232/rs232.h"
+ 
++#define IOCTL(fd, io, s) do { \
++	ret = ioctl(fd, io, s); \
++	if (ret == -1) { \
++		int _errno = errno; \
++		p->last_error = strerror(_errno); \
++		DBG(#io " error: %s (%d)\n", p->last_error, _errno); \
++		errno = _errno; \
++		return RS232_ERR_IOCTL; \
++	} \
++} while (0);
++
++#define LAST_ERROR(x, s) do { \
++	int _errno = errno; \
++	x->last_error = strerror(_errno); \
++	DBG("%s error: %s (%d)\n", s, x->last_error, _errno); \
++	errno = _errno; \
++} while (0);
++
+ struct rs232_port_t *
+ rs232_init(void)
+ {
+@@ -83,12 +101,7 @@ rs232_end(struct rs232_port_t *p)
+ 	}
+ 
+ 	rs232_flush(p);
+-
+-	if (tcsetattr(ux->fd, TCSANOW, &ux->oldterm) < 0) {
+-		DBG("tcsetattr() %d %s\n", errno, strerror(errno))
+-		return;
+-	}
+-
++	tcsetattr(ux->fd, TCSANOW, &ux->oldterm);
+ 	rs232_close(p);
+ 	free(p->pt);
+ 	free(p);
+@@ -113,18 +126,13 @@ rs232_in_qeue(struct rs232_port_t *p, unsigned int *in_bytes)
+ 	/* don't work reliable with 0 */
+ 	tv.tv_usec = 1;
+ 	tv.tv_sec = 0;
++	*in_bytes = 0;
+ 
+ 	select(ux->fd+1, &set, NULL, NULL, &tv);
+-	ret = ioctl(ux->fd, FIONREAD, &b);
+-	if (ret == -1) {
+-		*in_bytes = 0;
+-		DBG("%s\n", "RS232_ERR_IOCTL");
+-		return RS232_ERR_IOCTL;
+-	}
++	IOCTL(ux->fd, FIONREAD, &b);
+ 
+ 	*in_bytes = b;
+ 	DBG("in_bytes=%d\n", b);
+-
+ 	return RS232_ERR_NOERROR;
+ }
+ 
+@@ -184,15 +192,13 @@ rs232_read(struct rs232_port_t *p, unsigned char *buf, unsigned int buf_len,
+ 	r = read(ux->fd, buf, buf_len);
+ 	if (r == -1) {
+ 		*read_len = 0;
+-		DBG("errno: %d strerror: %s %s\n",
+-		    errno, strerror(errno), "RS232_ERR_READ");
+-
++		LAST_ERROR(p, "read");
+ 		return RS232_ERR_READ;
+ 	}
+ 
+ 	*read_len = r;
+ 	DBG("read_len=%d hex='%s' ascii='%s'\n", r, rs232_hex_dump(buf, r),
+-		rs232_ascii_dump(buf, r));
++	    rs232_ascii_dump(buf, r));
+ 
+ 	return RS232_ERR_NOERROR;
+ }
+@@ -212,7 +218,6 @@ rs232_read_timeout_forced(struct rs232_port_t *p, unsigned char *buf,
+ {
+ 	int b;
+ 	int ret;
+-	int reti;
+ 	fd_set set;
+ 	int r;
+ 	struct rs232_posix_t *ux = p->pt;
+@@ -240,12 +245,12 @@ rs232_read_timeout_forced(struct rs232_port_t *p, unsigned char *buf,
+ 
+ 		if (ret == 0) {
+ 			DBG("%s\n", "select timeout");
+-			break;
++			return RS232_ERR_TIMEOUT;
+ 		}
+ 
+ 		if (ret == -1) {
+-			DBG("%s\n", "select error");
+-			break;
++			LAST_ERROR(p, "select()");
++			return RS232_ERR_SELECT;
+ 		}
+ 
+ 		if (duration(&t1, &t2) >= (int) timeout) {
+@@ -253,11 +258,7 @@ rs232_read_timeout_forced(struct rs232_port_t *p, unsigned char *buf,
+ 			break;
+ 		}
+ 
+-		reti = ioctl(ux->fd, FIONREAD, &b);
+-		if (reti == -1) {
+-			DBG("%s\n", "ioctl error");
+-			break;
+-		}
++		IOCTL(ux->fd, FIONREAD, &b);
+ 
+ 		if ((unsigned int) b >= buf_len) {
+ 			DBG("fionread=%d\n", b);
+@@ -265,29 +266,17 @@ rs232_read_timeout_forced(struct rs232_port_t *p, unsigned char *buf,
+ 		}
+ 	}
+ 
+-	switch (ret) {
+-	case 0:
+-		DBG("%s\n", "RS232_ERR_TIMEOUT");
+-		return RS232_ERR_TIMEOUT;
+-	case 1:
+-		r = read(ux->fd, buf, buf_len);
+-		if (r == -1) {
+-			DBG("errno: %d strerror: %s %s\n",
+-			    errno, strerror(errno), "RS232_ERR_READ");
+-
+-			return RS232_ERR_READ;
+-		}
+-
+-		DBG("read_len=%d hex='%s' ascii='%s'\n", r,
+-			rs232_hex_dump(buf, r),
+-			rs232_ascii_dump(buf, r));
+-		*read_len = r;
+-		break;
+-	default:
+-		DBG("%s\n", "RS232_ERR_SELECT");
+-		return RS232_ERR_SELECT;
++	r = read(ux->fd, buf, buf_len);
++	if (r == -1) {
++		LAST_ERROR(p, "read()");
++		return RS232_ERR_READ;
+ 	}
+ 
++	DBG("read_len=%d hex='%s' ascii='%s'\n", r,
++	    rs232_hex_dump(buf, r),
++	    rs232_ascii_dump(buf, r));
++
++	*read_len = r;
+ 	return RS232_ERR_NOERROR;
+ }
+ 
+@@ -296,9 +285,9 @@ rs232_read_timeout(struct rs232_port_t *p, unsigned char *buf,
+ 		   unsigned int buf_len, unsigned int *read_len,
+ 		   unsigned int timeout)
+ {
++	int r;
+ 	int ret;
+ 	fd_set set;
+-	int r;
+ 	struct timeval tv;
+ 	struct rs232_posix_t *ux = p->pt;
+ 
+@@ -322,18 +311,17 @@ rs232_read_timeout(struct rs232_port_t *p, unsigned char *buf,
+ 	case 1:
+ 		r = read(ux->fd, buf, buf_len);
+ 		if (r == -1) {
+-			DBG("errno: %d strerror: %s %s\n",
+-			    errno, strerror(errno), "RS232_ERR_READ");
++			LAST_ERROR(p, "read()");
+ 			return RS232_ERR_READ;
+ 		}
+ 
+ 		DBG("read_len=%d hex='%s' ascii='%s'\n", r,
+-			rs232_hex_dump(buf, r),
+-			rs232_ascii_dump(buf, r));
++		    rs232_hex_dump(buf, r),
++		    rs232_ascii_dump(buf, r));
+ 		*read_len = r;
+ 		break;
+ 	default:
+-		DBG("%s\n", "RS232_ERR_SELECT");
++		LAST_ERROR(p, "select()");
+ 		return RS232_ERR_SELECT;
+ 	}
+ 
+@@ -356,16 +344,14 @@ rs232_write(struct rs232_port_t *p, unsigned char *buf, unsigned int buf_len,
+ 
+ 	w = write(ux->fd, buf, buf_len);
+ 	if (w == -1) {
+-		DBG("errno: %d strerror: %s %s\n",
+-		    errno, strerror(errno), "RS232_ERR_WRITE");
+-
++		LAST_ERROR(p, "write()");
+ 		*write_len = 0;
+ 		return RS232_ERR_WRITE;
+ 	}
+ 
+ 	*write_len = w;
+ 	DBG("write_len=%d hex='%s' ascii='%s'\n", w, rs232_hex_dump(buf, w),
+-		rs232_ascii_dump(buf, w));
++	    rs232_ascii_dump(buf, w));
+ 
+ 	return RS232_ERR_NOERROR;
+ }
+@@ -400,9 +386,7 @@ rs232_write_timeout(struct rs232_port_t *p, unsigned char *buf,
+ 	case 1:
+ 		w = write(ux->fd, buf, buf_len);
+ 		if (w == -1) {
+-			DBG("errno: %d strerror: %s %s\n",
+-			    errno, strerror(errno), "RS232_ERR_WRITE");
+-
++			LAST_ERROR(p, "write()");
+ 			return RS232_ERR_WRITE;
+ 		}
+ 
+@@ -412,7 +396,7 @@ rs232_write_timeout(struct rs232_port_t *p, unsigned char *buf,
+ 			rs232_ascii_dump(buf, w));
+ 		break;
+ 	default:
+-		DBG("%s\n", "RS232_ERR_SELECT");
++		LAST_ERROR(p, "select()");
+ 		return RS232_ERR_SELECT;
+ 	}
+ 
+@@ -430,7 +414,7 @@ rs232_open(struct rs232_port_t *p)
+ 
+ 	ux->fd = open(p->dev, O_RDWR | O_NOCTTY | O_NDELAY);
+ 	if (ux->fd < 0) {
+-		DBG("open() %d %s\n", errno, strerror(errno))
++		LAST_ERROR(p, "open()");
+ 		return RS232_ERR_OPEN;
+ 	}
+ 
+@@ -444,7 +428,7 @@ rs232_open(struct rs232_port_t *p)
+ 	fcntl(ux->fd, F_SETFL, flags);
+ 
+ 	if (tcflush(ux->fd, TCIOFLUSH) < 0) {
+-		DBG("tcflush() %d %s\n", errno, strerror(errno))
++		LAST_ERROR(p, "tcflush()");
+ 		return RS232_ERR_CONFIG;
+ 	}
+ 
+@@ -553,11 +537,7 @@ rs232_set_dtr(struct rs232_port_t *p, enum rs232_dtr_e state)
+ 	DBG("p=%p p->pt=%p dtr=%d (dtr control %s)\n",
+ 	    (void *)p, p->pt, state, rs232_strdtr(state));
+ 
+-	ret = ioctl(ux->fd, TIOCMGET, &set);
+-	if (ret == -1) {
+-		DBG("%s\n", "TIOCMGET RS232_ERR_IOCTL");
+-		return RS232_ERR_IOCTL;
+-	}
++	IOCTL(ux->fd, TIOCMGET, &set);
+ 
+ 	switch (state) {
+ 	case RS232_DTR_OFF:
+@@ -570,14 +550,8 @@ rs232_set_dtr(struct rs232_port_t *p, enum rs232_dtr_e state)
+ 		return RS232_ERR_UNKNOWN;
+ 	}
+ 
+-	ret = ioctl(ux->fd, TIOCMSET, &set);
+-	if (ret == -1) {
+-		DBG("%s\n", "TIOCMSET RS232_ERR_IOCTL");
+-		return RS232_ERR_IOCTL;
+-	}
+-	
++	IOCTL(ux->fd, TIOCMSET, &set);
+ 	p->dtr = state;
+-
+ 	return RS232_ERR_NOERROR;
+ }
+ 
+@@ -591,11 +565,7 @@ rs232_set_rts(struct rs232_port_t *p, enum rs232_rts_e state)
+ 	DBG("p=%p p->pt=%p rts=%d (rts control %s)\n",
+ 	    (void *)p, p->pt, state, rs232_strrts(state));
+ 
+-	ret = ioctl(ux->fd, TIOCMGET, &set);
+-	if (ret == -1) {
+-		DBG("%s\n", "TIOCMGET RS232_ERR_IOCTL");
+-		return RS232_ERR_IOCTL;
+-	}
++	IOCTL(ux->fd, TIOCMGET, &set);
+ 
+ 	switch (state) {
+ 	case RS232_RTS_OFF:
+@@ -608,12 +578,7 @@ rs232_set_rts(struct rs232_port_t *p, enum rs232_rts_e state)
+ 		return RS232_ERR_UNKNOWN;
+ 	}
+ 
+-	ret = ioctl(ux->fd, TIOCMSET, &set);
+-	if (ret == -1) {
+-		DBG("%s\n", "TIOCMSET RS232_ERR_IOCTL");
+-		return RS232_ERR_IOCTL;
+-	}
+-	
++	IOCTL(ux->fd, TIOCMSET, &set);
+ 	p->rts = state;
+ 
+ 	return RS232_ERR_NOERROR;
+@@ -760,8 +725,10 @@ rs232_flush(struct rs232_port_t *p)
+ 		return RS232_ERR_PORT_CLOSED;
+ 
+ 	ret = tcflush(ux->fd, TCIOFLUSH);
+-	if (ret == -1)
++	if (ret == -1) {
++		LAST_ERROR(p, "tcflush()");
+ 		return RS232_ERR_FLUSH;
++	}
+ 
+ 	return RS232_ERR_NOERROR;
+ }
+@@ -778,8 +745,10 @@ rs232_close(struct rs232_port_t *p)
+ 		return RS232_ERR_PORT_CLOSED;
+ 
+ 	ret = close(ux->fd);
+-	if (ret == -1)
++	if (ret == -1) {
++		LAST_ERROR(p, "close()");
+ 		return RS232_ERR_CLOSE;
++	}
+ 
+ 	p->status = RS232_PORT_CLOSED;
+ 	return RS232_ERR_NOERROR;
+-- 
+1.7.9.5
+
