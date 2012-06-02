@@ -103,3 +103,24 @@ define KernelPackage/spi-vsc7385/description
 endef
 
 $(eval $(call KernelPackage,spi-vsc7385))
+
+
+define KernelPackage/spi-lis3lv02d
+  SUBMENU:=$(SPI_MENU)
+  TITLE:=LIS3LV02D and similar accelerometers
+  KCONFIG:=CONFIG_SENSORS_LIS3_SPI
+  FILES:=$(LINUX_DIR)/drivers/misc/lis3lv02d/lis3lv02d.ko \
+         $(LINUX_DIR)/drivers/misc/lis3lv02d/lis3lv02d_spi.ko
+  AUTOLOAD:=$(call AutoLoad,94, \
+              lis3lv02d \
+              lis3lv02d_spi)
+  $(call AddDepends/input,+kmod-input-evdev)
+endef
+
+define KernelPackage/spi-lis3lv02d/description
+  This driver provides support for the LIS3LV02Dx accelerometer connected
+  via SPI. The accelerometer data is readable via
+  /sys/devices/platform/lis3lv02d.
+endef
+
+$(eval $(call KernelPackage,spi-lis3lv02d))
