@@ -37,11 +37,15 @@ ifeq ($(strip $(CONFIG_EXTERNAL_KERNEL_TREE)),"")
   else
     ifeq ($(strip $(CONFIG_KERNEL_GIT_LOCAL_REPOSITORY)),"")
 define Kernel/Prepare/Default
-	git clone $(CONFIG_KERNEL_GIT_CLONE_URI) $(LINUX_DIR)
+	git clone --branch $(CONFIG_KERNEL_GIT_CLONE_BRANCH) $(CONFIG_KERNEL_GIT_CLONE_URI) $(LINUX_DIR)
+	$(Kernel/Patch)
+	touch $(LINUX_DIR)/.quilt_used
     endef
   else
     define Kernel/Prepare/Default
-	git clone --reference $(CONFIG_KERNEL_GIT_LOCAL_REPOSITORY) $(CONFIG_KERNEL_GIT_CLONE_URI) $(LINUX_DIR)
+	git clone --branch $(CONFIG_KERNEL_GIT_CLONE_BRANCH) --reference $(CONFIG_KERNEL_GIT_LOCAL_REPOSITORY) $(CONFIG_KERNEL_GIT_CLONE_URI) $(LINUX_DIR)
+	$(Kernel/Patch)
+	touch $(LINUX_DIR)/.quilt_used
     endef
   endif
 endif
